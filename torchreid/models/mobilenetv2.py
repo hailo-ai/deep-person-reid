@@ -1,5 +1,6 @@
 from __future__ import division, absolute_import
 import torch.utils.model_zoo as model_zoo
+import torch
 from torch import nn
 from torch.nn import functional as F
 
@@ -121,6 +122,7 @@ class MobileNetV2(nn.Module):
         self.fc = self._construct_fc_layer(
             fc_dims, self.feature_dim, dropout_p
         )
+
         self.classifier = nn.Linear(self.feature_dim, num_classes)
 
         self._init_params()

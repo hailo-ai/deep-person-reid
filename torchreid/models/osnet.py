@@ -434,6 +434,8 @@ class OSNet(nn.Module):
             return y
         elif self.loss == 'triplet':
             return y, v
+        elif self.loss =='cosface':
+            return v
         else:
             raise KeyError("Unsupported loss: {}".format(self.loss))
 

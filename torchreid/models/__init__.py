@@ -21,6 +21,7 @@ from .resnet_ibn_a import *
 from .resnet_ibn_b import *
 from .shufflenetv2 import *
 from .inceptionresnetv2 import *
+from .repvgg import *
 
 __model_factory = {
     # image classification models
@@ -59,6 +60,10 @@ __model_factory = {
     'shufflenet_v2_x1_0': shufflenet_v2_x1_0,
     'shufflenet_v2_x1_5': shufflenet_v2_x1_5,
     'shufflenet_v2_x2_0': shufflenet_v2_x2_0,
+    'repvgg_a0' : create_RepVGG_A0,
+    'repvgg_a0_512' : create_RepVGG_A0_512,
+    'repvgg_a0_2048' : create_RepVGG_A0_2048,
+    'repvgg_a2' : create_RepVGG_A2,
     # reid-specific models
     'mudeep': MuDeep,
     'resnet50mid': resnet50mid,
@@ -89,7 +94,7 @@ def show_avai_models():
 
 
 def build_model(
-    name, num_classes, loss='softmax', pretrained=True, use_gpu=True
+    name, num_classes, loss='softmax', pretrained=True, use_gpu=True, use_se=False,
 ):
     """A function wrapper for building a model.
 
@@ -114,9 +119,10 @@ def build_model(
         raise KeyError(
             'Unknown model: {}. Must be one of {}'.format(name, avai_models)
         )
+
     return __model_factory[name](
         num_classes=num_classes,
         loss=loss,
         pretrained=pretrained,
         use_gpu=use_gpu
-    )
+        )

@@ -296,7 +296,6 @@ class Dataset(object):
         the transform function tfm.
         """
         img_list = []
-
         for k in range(k_tfm):
             img_list.append(tfm(img0))
 

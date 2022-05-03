@@ -46,11 +46,9 @@ class Fire(nn.Module):
 
 class SqueezeNet(nn.Module):
     """SqueezeNet.
-
     Reference:
         Iandola et al. SqueezeNet: AlexNet-level accuracy with 50x fewer parameters
         and< 0.5 MB model size. arXiv:1602.07360.
-
     Public keys:
         - ``squeezenet1_0``: SqueezeNet (version=1.0).
         - ``squeezenet1_1``: SqueezeNet (version=1.1).
@@ -117,7 +115,6 @@ class SqueezeNet(nn.Module):
 
     def _construct_fc_layer(self, fc_dims, input_dim, dropout_p=None):
         """Constructs fully connected layer
-
         Args:
             fc_dims (list or tuple): dimensions of fc layers, if None, no fc layers are constructed
             input_dim (int): input dimension

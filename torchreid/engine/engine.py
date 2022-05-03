@@ -7,6 +7,7 @@ from collections import OrderedDict
 import torch
 from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
+#from torchvision.transforms import RandomHorizontalFlip
 
 from torchreid import metrics
 from torchreid.utils import (
@@ -36,6 +37,7 @@ class Engine(object):
         self.model = None
         self.optimizer = None
         self.scheduler = None
+        self.model_name = None
 
         self._models = OrderedDict()
         self._optims = OrderedDict()
@@ -166,7 +168,7 @@ class Engine(object):
             )
 
         if test_only:
-            self.test(
+            rank1 = self.test(
                 dist_metric=dist_metric,
                 normalize_feature=normalize_feature,
                 visrank=visrank,
@@ -176,7 +178,7 @@ class Engine(object):
                 ranks=ranks,
                 rerank=rerank
             )
-            return
+            return rank1
 
         if self.writer is None:
             self.writer = SummaryWriter(log_dir=save_dir)
@@ -185,6 +187,9 @@ class Engine(object):
         self.start_epoch = start_epoch
         self.max_epoch = max_epoch
         print('=> Start training')
+
+        best_rank1 = 0
+        rank1_arr = []
 
         for self.epoch in range(self.start_epoch, self.max_epoch):
             self.train(
@@ -206,7 +211,11 @@ class Engine(object):
                     use_metric_cuhk03=use_metric_cuhk03,
                     ranks=ranks
                 )
-                self.save_model(self.epoch, rank1, save_dir)
+                rank1_arr.append(rank1)
+                np.save(save_dir + '/loss_arr.npy', np.asarray(rank1_arr))
+                if rank1[0] > best_rank1:
+                    self.save_model(self.epoch, rank1[0], save_dir)
+                    best_rank1 = rank1[0]
 
         if self.max_epoch > 0:
             print('=> Final test')
@@ -219,13 +228,18 @@ class Engine(object):
                 use_metric_cuhk03=use_metric_cuhk03,
                 ranks=ranks
             )
-            self.save_model(self.epoch, rank1, save_dir)
+            rank1_arr.append(rank1)
+            if rank1[0] > best_rank1:
+                self.save_model(self.epoch, rank1[0], save_dir)
+                best_rank1 = rank1[0]
 
         elapsed = round(time.time() - time_start)
         elapsed = str(datetime.timedelta(seconds=elapsed))
         print('Elapsed {}'.format(elapsed))
         if self.writer is not None:
             self.writer.close()
+
+        return rank1_arr
 
     def train(self, print_freq=10, fixbase_epoch=0, open_layers=None):
         losses = MetricMeter()
@@ -241,6 +255,7 @@ class Engine(object):
         self.num_batches = len(self.train_loader)
         end = time.time()
         for self.batch_idx, data in enumerate(self.train_loader):
+
             data_time.update(time.time() - end)
             loss_summary = self.forward_backward(data)
             batch_time.update(time.time() - end)
@@ -315,7 +330,7 @@ class Engine(object):
         """
         self.set_model_mode('eval')
         targets = list(self.test_loader.keys())
-
+        rank1_arr = []
         for name in targets:
             domain = 'source' if name in self.datamanager.sources else 'target'
             print('##### Evaluating {} ({}) #####'.format(name, domain))
@@ -334,12 +349,13 @@ class Engine(object):
                 ranks=ranks,
                 rerank=rerank
             )
+            rank1_arr.append(rank1)
 
             if self.writer is not None:
                 self.writer.add_scalar(f'Test/{name}/rank1', rank1, self.epoch)
                 self.writer.add_scalar(f'Test/{name}/mAP', mAP, self.epoch)
 
-        return rank1
+        return rank1_arr
 
     @torch.no_grad()
     def _evaluate(
@@ -365,7 +381,15 @@ class Engine(object):
                 if self.use_gpu:
                     imgs = imgs.cuda()
                 end = time.time()
-                features = self.extract_features(imgs)
+
+                # if model is repvgg then, perform deploy before eval
+                if not hasattr(self.model, 'deploy'):
+                    features = self.extract_features(imgs)
+                else:
+                    from torchreid.models.repvgg import repvgg_model_convert
+                    model_deploy = repvgg_model_convert(self.model)
+                    features = model_deploy(imgs)
+
                 batch_time.update(time.time() - end)
                 features = features.cpu()
                 f_.append(features)
@@ -375,15 +399,13 @@ class Engine(object):
             pids_ = np.asarray(pids_)
             camids_ = np.asarray(camids_)
             return f_, pids_, camids_
-
         print('Extracting features from query set ...')
         qf, q_pids, q_camids = _feature_extraction(query_loader)
         print('Done, obtained {}-by-{} matrix'.format(qf.size(0), qf.size(1)))
-
+        
         print('Extracting features from gallery set ...')
         gf, g_pids, g_camids = _feature_extraction(gallery_loader)
         print('Done, obtained {}-by-{} matrix'.format(gf.size(0), gf.size(1)))
-
         print('Speed: {:.4f} sec/batch'.format(batch_time.avg))
 
         if normalize_feature:
@@ -396,7 +418,6 @@ class Engine(object):
         )
         distmat = metrics.compute_distance_matrix(qf, gf, dist_metric)
         distmat = distmat.numpy()
-
         if rerank:
             print('Applying person re-ranking ...')
             distmat_qq = metrics.compute_distance_matrix(qf, qf, dist_metric)
